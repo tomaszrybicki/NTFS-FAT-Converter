@@ -10,6 +10,7 @@
 //					containing files from NTFS partition
 //
 //					Application assumes a little endian format is used on the machine
+//					Bootable partitions are not supported
 //============================================================================
 
 #include <iostream>
@@ -21,12 +22,22 @@ using namespace std;
 
 /* TODO:
  *
+ * add fats to mount fat
+ * why arent fat clusters in fat?
+ * what is fat third entry
+ *
  * optional:
  * 	specify only a disk and partition will be created for FAT
  */
 int main() {
+	FATManager m2("/dev/sdb1");
+	char zero[0x1000]={0};
+	m2.write(0x4000, 0x1000, zero);
+	m2.write(0x83800, 0x1000, zero);
 
-	FATManager manager("/dev/sdb1");
 
+	FATManager manager("/dev/sdc1");
+	manager.writeBPB();
+	manager.writeFSInfo();
 	return 0;
 }

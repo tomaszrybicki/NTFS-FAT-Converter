@@ -16,6 +16,7 @@
 #define WORD 2
 #define BYTE 1
 
+#define SECTOR_SIZE 512
 
 
 /* FAT32 MBR
@@ -174,7 +175,21 @@
 #define VBR_SIGNATURE_LEN	 	2
 
 
+/* FS information sector offsets */
+#define FSINFO_SIGNATURE1_OFFSET 0x00
+#define FSINFO_SIGNATURE1_LEN 4
 
+#define FSINFO_SIGNATURE2_OFFSET 0x01E4
+#define FSINFO_SIGNATURE2_LEN 4
+
+#define FSINFO_FREE_CLUSTERS_OFFSET 0x01E8
+#define FSINFO_FREE_CLUSTERS_LEN 4
+
+#define FSINFO_RECENT_CLUSTER_OFFSET 0x01EC
+#define FSINFO_RECENT_CLUSTER_LEN 4
+
+#define FSINFO_SIGNATURE3_OFFSET 0x01FC
+#define FSINFO_SIGNATURE3_LEN 4
 
 
 
@@ -199,15 +214,15 @@ typedef struct{
 
 typedef struct{
 	char bootCode[3];
-	char OEMName[8];
+	char OEMName[8] = { '1', '6', '0', '4', '0', '5', 0, 0 };
 	char bytesPerSector[2];
 	char sectorsPerCluster;
 	char reservedSectors[2];
 	char fatCopiesCount;
-	char maxRootEntries[2];
-	char sectorsSmallPart[2];
+	char maxRootEntries[2] = { 0, 0 };
+	char sectorsSmallPart[2] = { 0, 0 };;
 	char mediaDescriptor;
-	char unused1[2];
+	char unused1[2]  = { 0, 0 };
 	char sectorsPerTrack[2];
 	char numberOfHeads[2];
 	char numberOfHiddenSectors[4];
@@ -215,21 +230,27 @@ typedef struct{
 	char fatSectorSize[4];
 	char flags[2];
 	char driveVersion[2];
-	char rootDirectoryCluster[4];
+	char rootDirectoryCluster[4] = {0};
 	char fsinfoSector[2];
 	char backupVBRSector[2];
-	char reserved[12];
+	char reserved[12] = {0,0,0,0,0,0,0,0,0,0,0,0};
 	char logicalDriveNumber;
-	char unused2;
+	char unused2 = 1;
 	char extendedSignature;
 	char serialNumber[4];
-	char volumeName[11];
-	char fatName[8];
-	char code[420];
+	char volumeName[11] = { 'R', 'y', 'b', 'i', 'c', 'k','i','T','o','m','a' };
+	char fatName[8] = { 's', 'z', 0, 'F', 'A', 'T', '3', '2' };
+	char code[420] = {0};
 	char VBRsignature[2];
 } BPB;
 
-
+typedef struct {
+	char signature1[4] = {'R', 'R', 'a', 'A'};
+	char signature2[4] = {'r', 'r','A','a'};
+	unsigned char freeClusters[4] = {0xFF, 0xFF, 0xFF, 0xFF};
+	unsigned char recentCluster[4] = {0xFF, 0xFF, 0xFF, 0xFF};
+	unsigned char signature3[4] = {0x00, 0x00, 0x55, 0xAA};
+} FSInfo;
 
 
 

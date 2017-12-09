@@ -22,9 +22,11 @@ public:
 
 	void readPartitionTable();
 	void writeBPB();
+	void writeFSInfo();
+	void writeFATs();
 
 
-private:
+//private:
 	void read(streamoff offset, unsigned long long length, char* dest);
 	void write(streamoff offset, unsigned long long length, char* src);
 	LBA convertCHStoLBA(CHS source);
@@ -33,6 +35,7 @@ private:
 private:
 	Partition m_partitionTable[4];
 	BPB m_bpb;
+	FSInfo m_fsInfo;
 	string m_drive;
 
 };
