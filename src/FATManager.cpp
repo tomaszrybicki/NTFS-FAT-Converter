@@ -7,10 +7,25 @@
 
 #include "FATManager.h"
 
-FATManager::FATManager(string drive)
-	: m_drive(drive)
-{
 
+FATManager::FATManager(string drive
+		, uint32_t bytesPerSector
+		, uint32_t sectorsPerCluster
+		, uint32_t reservedSectors
+		, uint64_t neededSectors)
+	: m_drive(drive)
+	, m_bytesPerSector(bytesPerSector)
+	, m_sectorsPerCluster(sectorsPerCluster)
+	, m_reservedSectors(reservedSectors)
+	, m_fatSize((((neededSectors / sectorsPerCluster)*4) / bytesPerSector) - 1)
+	, m_fat1Offset(m_bytesPerSector * m_reservedSectors)
+	, m_fat2Offset(m_fat1Offset + m_fatSize * m_bytesPerSector)
+	, m_dataClustersOffset(m_fat2Offset + m_fatSize * m_bytesPerSector)
+	, m_fat1(m_fat1Offset, m_sectorsPerCluster, m_bytesPerSector, m_fatSize, this)
+	, m_fat2(m_fat2Offset, m_sectorsPerCluster, m_bytesPerSector, m_fatSize, this)
+{
+	DirectoryTable tmp(m_fat2Offset + (m_fatSize * m_bytesPerSector), this);
+	m_rootDirectory.push_back(tmp);
 }
 
 FATManager::~FATManager() {
@@ -66,7 +81,6 @@ void FATManager::readPartitionTable() {
 }
 
 void FATManager::writeBPB() {
-	// first get from ntfs number of sectors, count fat size, root directory location
 
 	/* Create MBC (jmp and nop) */
 	m_bpb.bootCode[0] = 0xEB;
@@ -78,12 +92,12 @@ void FATManager::writeBPB() {
 	write(OEM_NAME_OFFSET, OEM_NAME_LEN, m_bpb.OEMName);
 
 	/* 512B per sector */
-	m_bpb.bytesPerSector[0] = 0x00;
-	m_bpb.bytesPerSector[1] = 0x02;
+	m_bpb.bytesPerSector[0] = ((byte_t*)(&m_bytesPerSector))[0];
+	m_bpb.bytesPerSector[1] = ((byte_t*)(&m_bytesPerSector))[1];
 	write(BYTES_PER_SECTOR_OFFSET, BYTES_PER_SECTOR_LEN, m_bpb.bytesPerSector);
 
 	/* 4kiB clusters */
-	m_bpb.sectorsPerCluster = 0x08;
+	m_bpb.sectorsPerCluster = m_sectorsPerCluster;
 	write(SECTORS_PER_CLUSTER_OFFSET, SECTORS_PER_CLUSTER_LEN, &m_bpb.sectorsPerCluster);
 
 	/* 32 reserved sectors */
@@ -123,15 +137,12 @@ void FATManager::writeBPB() {
 	write(NUMBER_OF_HIDDEN_SECTORS_OFFSET, NUMBER_OF_SECTORS_LEN, m_bpb.numberOfHiddenSectors);
 
 	/* Number of sectors - depending on source partition */
-	// TMP!!
-	m_bpb.numberOfSectors[0] = 0x00; m_bpb.numberOfSectors[1] = 0xF8;
-	m_bpb.numberOfSectors[2] = 0x0F; m_bpb.numberOfSectors[3] = 0x00;
+	uint32_t numberOfSectors = ((m_fatSize * m_bytesPerSector) / 4) * m_sectorsPerCluster;
+	strncpy((char*)m_bpb.numberOfSectors, (char*)&numberOfSectors, 4);
 	write(NUMBER_OF_SECTORS_OFFSET, NUMBER_OF_SECTORS_LEN, m_bpb.numberOfSectors);
 
 	/* FAT size in sectors - depending on source partition */
-	// TMP!!
-	m_bpb.fatSectorSize[0] = 0xFC; m_bpb.fatSectorSize[1] = 0x03;
-	m_bpb.fatSectorSize[2] = 0x00; m_bpb.fatSectorSize[3] = 0x00;
+	strncpy((char*)m_bpb.fatSectorSize, (char*)&m_fatSize, 4);
 	write(FAT_SECTOR_SIZE_OFFSET, FAT_SECTOR_SIZE_LEN, m_bpb.fatSectorSize);
 
 	/* Flags: - disable mirroring, set first FAT as active */
@@ -140,12 +151,11 @@ void FATManager::writeBPB() {
 	write(FLAGS_OFFSET, FLAGS_LEN, m_bpb.flags);
 
 	/* Drive version - zeroed */
-	m_bpb.driveVersion[0] = 0x0;
-	m_bpb.driveVersion[1] = 0x0;
+	m_bpb.driveVersion[0] = 0x00;
+	m_bpb.driveVersion[1] = 0x00;
 	write(DRIVE_VERSION_OFFSET, DRIVE_VERSION_LEN, m_bpb.driveVersion);
 
-	/* Root directory cluster number - depending on FATs size */
-	//TMP!!
+	/* Root directory cluster number */
 	m_bpb.rootDirectoryCluster[0] = 0x02;
 	write(ROOT_DIRECTORY_CLUSTER_OFFSET, ROOT_DIRECTORY_CLUSTER_LEN, m_bpb.rootDirectoryCluster);
 
@@ -162,8 +172,8 @@ void FATManager::writeBPB() {
 	/* Reserved bytes */
 	write(RESERVED_OFFSET, RESERVED_LEN, m_bpb.reserved);
 
-	/* Logical drive number - may cause errors if duplicated */
-	m_bpb.logicalDriveNumber = 0x90;
+	/* Logical drive number */
+	m_bpb.logicalDriveNumber = 0x80;
 	write(LOGICAL_DRIVE_NUM_OFFSET, LOGICAL_DRIVE_NUM_LEN, &m_bpb.logicalDriveNumber);
 
 	/* Unused */
@@ -199,8 +209,8 @@ void FATManager::writeBPB() {
 
 
 void FATManager::read(streamoff offset,
-		unsigned long long length,
-		char* dest) {
+		uint32_t length,
+		byte_t* dest) {
 
 	ifstream drive;
 	drive.open(m_drive.c_str(), ios::binary|ios::in);
@@ -213,7 +223,7 @@ void FATManager::read(streamoff offset,
 	drive.seekg(offset);
 
 	for (unsigned int i = 0; i < length; i++){
-		drive.read(&(dest[i]), 1);
+		drive.read((char*)&(dest[i]), 1);
 	}
 
 	drive.close();
@@ -223,34 +233,22 @@ void FATManager::writeFSInfo() {
 	streamoff FSinfoOffset = m_bpb.fsinfoSector[1];
 	FSinfoOffset = FSinfoOffset << BYTE;
 	FSinfoOffset += m_bpb.fsinfoSector[0];
-	FSinfoOffset *= SECTOR_SIZE;
+	FSinfoOffset *= m_bytesPerSector;
 
 
 	write(FSinfoOffset + FSINFO_SIGNATURE1_OFFSET, FSINFO_SIGNATURE1_LEN, m_fsInfo.signature1);
 
 	write(FSinfoOffset + FSINFO_SIGNATURE2_OFFSET, FSINFO_SIGNATURE2_LEN, m_fsInfo.signature2);
 
-	write(FSinfoOffset + FSINFO_FREE_CLUSTERS_OFFSET, FSINFO_FREE_CLUSTERS_LEN, (char*)m_fsInfo.freeClusters);
+	write(FSinfoOffset + FSINFO_FREE_CLUSTERS_OFFSET, FSINFO_FREE_CLUSTERS_LEN, (byte_t*)m_fsInfo.freeClusters);
 
-	write(FSinfoOffset + FSINFO_RECENT_CLUSTER_OFFSET, FSINFO_RECENT_CLUSTER_LEN, (char*)m_fsInfo.recentCluster);
+	write(FSinfoOffset + FSINFO_RECENT_CLUSTER_OFFSET, FSINFO_RECENT_CLUSTER_LEN, (byte_t*)m_fsInfo.recentCluster);
 
-	write(FSinfoOffset + FSINFO_SIGNATURE3_OFFSET, FSINFO_SIGNATURE3_LEN, (char*)m_fsInfo.signature3);
+	write(FSinfoOffset + FSINFO_SIGNATURE3_OFFSET, FSINFO_SIGNATURE3_LEN, (byte_t*)m_fsInfo.signature3);
 }
 
-void FATManager::writeFATs() {
-	streamoff FAToffset;
-	unsigned int reservedSectors = m_bpb.reservedSectors[1];
-	reservedSectors = reservedSectors << BYTE;
-	reservedSectors += m_bpb.reservedSectors[0];
 
-	FAToffset = reservedSectors * SECTOR_SIZE;
-
-
-
-
-}
-
-void FATManager::write(streamoff offset, unsigned long long length, char* src) {
+void FATManager::write(streamoff offset, uint32_t length, byte_t* src) {
 	fstream drive;
 	drive.open(m_drive.c_str(), ios::binary|ios::in|ios::out);
 
@@ -262,8 +260,73 @@ void FATManager::write(streamoff offset, unsigned long long length, char* src) {
 	drive.seekp(offset);
 
 	for (unsigned int i = 0; i < length; i++){
-		drive.write(&(src[i]), 1);
+		drive.write((char*)&(src[i]), 1);
 	}
 
 	drive.close();
+}
+
+uint32_t FATManager::string2int(byte_t* src, uint32_t n) {
+	uint32_t result = 0;
+
+	for (int i = n-1; i >= 0; i--){
+		result = result << 8;
+		result += src[i];
+	}
+
+	return result;
+}
+
+uint32_t FATManager::clusterCeil(
+		uint32_t offset) {
+	int modulo = offset % (m_bpb.sectorsPerCluster * string2int(m_bpb.bytesPerSector,2));
+
+	/* If offset is beginning of cluster then return offset */
+	if(!modulo){
+		return offset;
+	}
+
+	/* Otherwise return next cluster offset */
+	return (offset / (m_bpb.sectorsPerCluster * string2int(m_bpb.bytesPerSector,2)))
+			+ (m_bpb.sectorsPerCluster * string2int(m_bpb.bytesPerSector,2));
+}
+
+void FATManager::writeFile(list<Cluster> data
+		, byte_t* filename
+		, byte_t* extension
+		, uint32_t fileLength)
+{
+	/* Write to FATs file contents */
+	uint32_t firstCluster;
+
+	cout << "\t[FAT32] Copying file contents..." << endl;
+	firstCluster = m_fat1.writeFile(data);
+	firstCluster = m_fat2.writeFile(data);
+	m_fat1.sync();
+	m_fat2.sync();
+
+	if(!firstCluster){
+		cout << "Couldn't write file: " << filename << " Couldnt  find free cluster " << endl;
+	}
+
+	/* Create directory entry for file */
+	for (uint32_t i = 0; i < m_rootDirectory.size(); i++){
+
+		if (m_rootDirectory[i].createEntry(filename, extension, firstCluster, fileLength)){
+			m_rootDirectory[i].sync();
+			return;
+		}
+
+	}
+
+	/* No more place for directory table entry - allocating new cluster */
+	streamoff lastDirectoryOffset = m_rootDirectory.back().m_location;
+	uint32_t lastDirectoryClusterNumber = ((lastDirectoryOffset - m_dataClustersOffset)
+			/ (m_sectorsPerCluster * m_bytesPerSector) + 2);
+
+	m_fat1.extendFile(lastDirectoryClusterNumber);
+	uint32_t newCluster = m_fat2.extendFile(lastDirectoryClusterNumber);
+
+	DirectoryTable tmp(m_dataClustersOffset + ((newCluster-2)*m_bytesPerSector*m_sectorsPerCluster), this);
+	m_rootDirectory.push_back(tmp);
 }

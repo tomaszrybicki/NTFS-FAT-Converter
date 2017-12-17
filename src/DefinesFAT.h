@@ -12,11 +12,13 @@
 #ifndef DEFINESFAT_H_
 #define DEFINESFAT_H_
 
+#include <list>
+#include <cstring>
+
+
 #define DWORD 4
 #define WORD 2
 #define BYTE 1
-
-#define SECTOR_SIZE 512
 
 
 /* FAT32 MBR
@@ -44,7 +46,7 @@
 
 
 /* FAT32 Partition table entry
- * Offsets from beginning of partion entry
+ * Offsets from beginning of partition entry
  */
 /* Current State of Partition(00h=Inactive, 80h=Active) */
 #define PARTITION_STATE_OFFSET 	0x00
@@ -193,64 +195,104 @@
 
 
 
+/* Types and structures */
+typedef unsigned int uint32_t;
+//typedef unsigned long long uint64_t;
+typedef unsigned char byte_t;
+
 typedef struct{
-	char head;
-	char cylinderHead[2];
+	byte_t head;
+	byte_t cylinderHead[2];
 } CHS;
 
 typedef unsigned long long LBA;
 
 /* Complete partition table entry */
 typedef struct{
-	char state;
-	char beginHead;
-	char beginCylHead[2];
-	char type;
-	char endHead;
-	char endCylHead[2];
-	char sectorsBetweenMBR[2];
-	char sizeInSectors[4];
+	byte_t state;
+	byte_t beginHead;
+	byte_t beginCylHead[2];
+	byte_t type;
+	byte_t endHead;
+	byte_t endCylHead[2];
+	byte_t sectorsBetweenMBR[2];
+	byte_t sizeInSectors[4];
 } Partition;
 
 typedef struct{
-	char bootCode[3];
-	char OEMName[8] = { '1', '6', '0', '4', '0', '5', 0, 0 };
-	char bytesPerSector[2];
-	char sectorsPerCluster;
-	char reservedSectors[2];
-	char fatCopiesCount;
-	char maxRootEntries[2] = { 0, 0 };
-	char sectorsSmallPart[2] = { 0, 0 };;
-	char mediaDescriptor;
-	char unused1[2]  = { 0, 0 };
-	char sectorsPerTrack[2];
-	char numberOfHeads[2];
-	char numberOfHiddenSectors[4];
-	char numberOfSectors[4];
-	char fatSectorSize[4];
-	char flags[2];
-	char driveVersion[2];
-	char rootDirectoryCluster[4] = {0};
-	char fsinfoSector[2];
-	char backupVBRSector[2];
-	char reserved[12] = {0,0,0,0,0,0,0,0,0,0,0,0};
-	char logicalDriveNumber;
-	char unused2 = 1;
-	char extendedSignature;
-	char serialNumber[4];
-	char volumeName[11] = { 'R', 'y', 'b', 'i', 'c', 'k','i','T','o','m','a' };
-	char fatName[8] = { 's', 'z', 0, 'F', 'A', 'T', '3', '2' };
-	char code[420] = {0};
-	char VBRsignature[2];
+	byte_t bootCode[3];
+	byte_t OEMName[8] = { '1', '6', '0', '4', '0', '5', 0, 0 };
+	byte_t bytesPerSector[2];
+	byte_t sectorsPerCluster;
+	byte_t reservedSectors[2];
+	byte_t fatCopiesCount;
+	byte_t maxRootEntries[2] = { 0, 0 };
+	byte_t sectorsSmallPart[2] = { 0, 0 };;
+	byte_t mediaDescriptor;
+	byte_t unused1[2]  = { 0, 0 };
+	byte_t sectorsPerTrack[2];
+	byte_t numberOfHeads[2];
+	byte_t numberOfHiddenSectors[4];
+	byte_t numberOfSectors[4];
+	byte_t fatSectorSize[4];
+	byte_t flags[2];
+	byte_t driveVersion[2];
+	byte_t rootDirectoryCluster[4] = {0,0,0,0};
+	byte_t fsinfoSector[2];
+	byte_t backupVBRSector[2];
+	byte_t reserved[12] = {0,0,0,0,0,0,0,0,0,0,0,0};
+	byte_t logicalDriveNumber;
+	byte_t unused2 = 1;
+	byte_t extendedSignature;
+	byte_t serialNumber[4];
+	byte_t volumeName[11] = { 'R', 'y', 'b', 'i', 'c', 'k','i','T','o','m','a' };
+	byte_t fatName[8] = { 's', 'z', 0, 'F', 'A', 'T', '3', '2' };
+	byte_t code[420] = {0};
+	byte_t VBRsignature[2];
 } BPB;
 
 typedef struct {
-	char signature1[4] = {'R', 'R', 'a', 'A'};
-	char signature2[4] = {'r', 'r','A','a'};
-	unsigned char freeClusters[4] = {0xFF, 0xFF, 0xFF, 0xFF};
-	unsigned char recentCluster[4] = {0xFF, 0xFF, 0xFF, 0xFF};
-	unsigned char signature3[4] = {0x00, 0x00, 0x55, 0xAA};
+	byte_t signature1[4] = {'R', 'R', 'a', 'A'};
+	byte_t signature2[4] = {'r', 'r','A','a'};
+	byte_t freeClusters[4] = {0xFF, 0xFF, 0xFF, 0xFF};
+	byte_t recentCluster[4] = {0xFF, 0xFF, 0xFF, 0xFF};
+	byte_t signature3[4] = {0x00, 0x00, 0x55, 0xAA};
 } FSInfo;
+
+/* A class representing a part of file, not a filesystem cluster */
+class Cluster{
+public:
+	Cluster(uint32_t clusterLength){
+		m_data = new byte_t[clusterLength];
+		m_clusterLength = clusterLength;
+	}
+
+	Cluster(const Cluster &src){
+		(*this) = src;
+	}
+
+	Cluster& operator=( const Cluster& src ) {
+		m_data = new byte_t[src.m_clusterLength];
+		m_clusterLength = src.m_clusterLength;
+		strncpy((char*)m_data, (char*)src.m_data, m_clusterLength);
+
+		return *this;
+	}
+
+	~Cluster(){
+		delete[] m_data;
+	}
+
+	byte_t* m_data;
+	uint32_t m_clusterLength;
+};
+
+typedef struct {
+	byte_t name[11];
+	byte_t extension[3];
+	uint32_t length;
+	std::list<Cluster> data;
+} File;
 
 
 

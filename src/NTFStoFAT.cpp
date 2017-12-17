@@ -16,28 +16,39 @@
 #include <iostream>
 #include "DefinesFAT.h"
 #include "FATManager.h"
+#include "NTFSManager.h"
 
 using namespace std;
 
 
 /* TODO:
- *
- * add fats to mount fat
- * why arent fat clusters in fat?
- * what is fat third entry
+ * clean up files, private/public methods
+ * nonresident data
  *
  * optional:
+ * attributes copy
  * 	specify only a disk and partition will be created for FAT
+ * 	create partition instead of fs on drive
  */
 int main() {
-	FATManager m2("/dev/sdb1");
-	char zero[0x1000]={0};
-	m2.write(0x4000, 0x1000, zero);
-	m2.write(0x83800, 0x1000, zero);
+
+	/* Create and initialize NTFS partition manager */
+	NTFSManager ntfsManager("/dev/sdb1");
+	ntfsManager.readBPB();
+
+	/* Create and initialize FAT32 partition manager */
+	FATManager fatManager("/dev/sdc1"
+			, ntfsManager.string2int(ntfsManager.getBytesPerSector(), 2)
+			, ntfsManager.getSectorsPerCluster()
+			, 32
+			, ntfsManager.string2long(ntfsManager.getTotalSectors(), 8));
+
+	/* Start conversion */
+	ntfsManager.getFatManager(&fatManager);
+	ntfsManager.readMFT();
 
 
-	FATManager manager("/dev/sdc1");
-	manager.writeBPB();
-	manager.writeFSInfo();
+
+
 	return 0;
 }
