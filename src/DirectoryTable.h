@@ -49,7 +49,6 @@ public:
 	/* Writes directory table content to disk */
 	void sync();
 
-private:
 	std::vector<Entry> m_entries;
 	std::streamoff m_location;
 	FATManager* m_manager;

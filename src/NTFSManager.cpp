@@ -231,28 +231,55 @@ void NTFSManager::handleAttribute(uint32_t attrType, streamoff attrOffset, File 
 				attrContentOff = string2int(bytes2, 2);
 
 				/* Get first data run header - a byte where
-				 * bits 0-3 are number of bytes for starting LCN number of data run
-				 * bits 4-7 are number of bytes for cluster count of run*/
+				 * bits 4-7 are number of bytes for starting LCN number of data run
+				 * bits 0-3 are number of bytes for cluster count of run*/
 				byte_t header;
-				byte_t bytesForLCN;
-				byte_t bytesForClusterCount;
+				byte_t bytesForLCN = 0;
+				byte_t bytesForClusterCount = 0;
 				byte_t startingLCN[8];
 				byte_t clusterCount[8];
+				uint32_t runsCount = 0;
+				uint32_t clustersSum = 0;
 
 				read(attrContentOff + attrOffset, 1, &header);
 
 				/* While there are data runs */
 				while (header != 0x00){
-					bytesForClusterCount = (header & 0b11110000) >> 4;
-					bytesForLCN = header & 0b00001111;
+					bytesForClusterCount = header & 0b00001111;
+					bytesForLCN = (header & 0b11110000) >> 4;
+
+					/* Undocumented pattern */
+					if(bytesForClusterCount == 0 || bytesForLCN == 0){
+						break;
+					}
 
 					/* Read cluster count */
 					attrContentOff += 1;
-					read
+					read(attrOffset + attrContentOff, bytesForClusterCount, clusterCount);
 
+					/* Read starting LCN */
+					attrContentOff += bytesForClusterCount;
+					read(attrOffset + attrContentOff, bytesForLCN, startingLCN);
+
+					/* Read header */
+					attrContentOff += bytesForLCN;
+					read(attrOffset + attrContentOff, 1, &header);
+
+					/* Read data from data runs */
+					Cluster tmp(m_sectorsPerCluster * string2int(m_bytesPerSector, 2));
+					for (uint32_t i = 0; i < string2long(clusterCount, bytesForClusterCount); i++){
+						// lcn to offset
+						// read from offset to data
+						// pushback cluster to file
+						// do data runs for mft :)
+					}
+
+					runsCount++;
+					clustersSum += string2long(clusterCount, bytesForClusterCount);
 				}
 
-				cout << "\t[NTFS] Data attribute is non-resident across...!" << endl;
+				cout << "\t[NTFS] Data attribute is non-resident in " << clustersSum
+						<< " LCNs across " << runsCount << " data runs." << endl;
 
 
 			/* Handle resident attribute */

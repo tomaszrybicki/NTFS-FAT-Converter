@@ -128,7 +128,7 @@ void FileAllocationTable::writeToCluster(byte_t* data, uint32_t clusterNumber) {
 	streamoff offset = (clusterNumber - 2) * m_clusterSize * m_bytesPerSector;
 	uint32_t length = m_clusterSize * m_bytesPerSector;
 
-	m_manager->write(m_manager->m_dataClustersOffset + offset, length, data);
+	m_manager->write(m_manager->getDataClustersOffset() + offset, length, data);
 }
 
 uint32_t FileAllocationTable::extendFile(uint32_t lastClusterNumber) {

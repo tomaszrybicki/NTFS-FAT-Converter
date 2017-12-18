@@ -44,7 +44,7 @@ bool DirectoryTable::createEntry(byte_t* filename
 		, uint32_t fileLength){
 
 	/* If directory table is full, return false */
-	if ((m_entries.size() * 4) >= (m_manager->m_sectorsPerCluster*m_manager->m_bytesPerSector)){
+	if ((m_entries.size() * 4) >= (m_manager->getSectorsPerCluster()*m_manager->getBytesPerSector())){
 		return false;
 	}
 

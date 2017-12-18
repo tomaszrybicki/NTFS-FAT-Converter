@@ -43,6 +43,22 @@ public:
 	CHS convertLBAtoCHS(LBA source);
 	uint32_t clusterCeil(uint32_t offset);
 
+	uint32_t getBytesPerSector() const {
+		return m_bytesPerSector;
+	}
+
+	uint32_t getReservedSectors() const {
+		return m_reservedSectors;
+	}
+
+	uint32_t getSectorsPerCluster() const {
+		return m_sectorsPerCluster;
+	}
+
+	streamoff getDataClustersOffset() const {
+		return m_dataClustersOffset;
+	}
+
 private:
 	/* Partition parameters */
 	string m_drive;
