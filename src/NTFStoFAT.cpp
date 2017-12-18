@@ -11,6 +11,9 @@
 //
 //					Application assumes a little endian format is used on the machine
 //					Bootable partitions are not supported
+//
+//					So far the application cannot convert directories
+//					and copies also files deleted on NTFS partition
 //============================================================================
 
 #include <iostream>
@@ -21,34 +24,38 @@
 using namespace std;
 
 
-/* TODO:
- * clean up files, private/public methods
- * nonresident data
- *
- * optional:
- * attributes copy
- * 	specify only a disk and partition will be created for FAT
- * 	create partition instead of fs on drive
- */
-int main() {
+int main(int argc, char *argv[]) {
 
-	/* Create and initialize NTFS partition manager */
-	NTFSManager ntfsManager("/dev/sdb1");
-	ntfsManager.readBPB();
+	/* Show help */
+	if(argc <= 2){
+		cout << "NTFStoFAT usage:  \t./NTFStoFAT <ntfs_partition>  <zero_filled_empty_partition>" << endl;
+		cout << "\t\t\t./NTFStoFAT -H for help" << endl;
 
-	/* Create and initialize FAT32 partition manager */
-	FATManager fatManager("/dev/sdc1"
-			, ntfsManager.string2int(ntfsManager.getBytesPerSector(), 2)
-			, ntfsManager.getSectorsPerCluster()
-			, 32
-			, ntfsManager.string2long(ntfsManager.getTotalSectors(), 8));
+		cout << endl << "This tool converts an NTFS partition to a new FAT32 formatted partition." << endl;
+		cout << "So far directories are not copied, only files with data content." << endl;
+		cout << "A useful feature of this application is copying deleted files" << endl;
+		cout << "WARNING: This tool is for experimental use only!!!"<<endl;
 
-	/* Start conversion */
-	ntfsManager.getFatManager(&fatManager);
-	ntfsManager.readMFT();
+	}else if (argc == 3){
+		/* Get arguments */
+		std::string input(argv[1]);
+		std::string output(argv[2]);
 
+		/* Create and initialize NTFS partition manager */
+		NTFSManager ntfsManager(input);
+		ntfsManager.readBPB();
 
+		/* Create and initialize FAT32 partition manager */
+		FATManager fatManager(output
+				, ntfsManager.string2int(ntfsManager.getBytesPerSector(), 2)
+				, ntfsManager.getSectorsPerCluster()
+				, 32
+				, ntfsManager.string2long(ntfsManager.getTotalSectors(), 8));
 
+		/* Start conversion */
+		ntfsManager.getFatManager(&fatManager);
+		ntfsManager.readMFT();
+	}
 
 	return 0;
 }

@@ -27,6 +27,8 @@ void NTFSManager::readBPB() {
 	/* Read Sectors per cluster */
 	read(SECTORS_PER_CLUSTER_OFFSET, SECTORS_PER_CLUSTER_LEN, &m_sectorsPerCluster);
 
+	m_bytesPerCluster = string2int(m_bytesPerSector, 2) * m_sectorsPerCluster;
+
 	/* Read reserved sectors */
 	read(RESERVED_SECTORS_OFFSET, RESERVED_SECTORS_LEN, m_reservedSectors);
 
@@ -34,7 +36,9 @@ void NTFSManager::readBPB() {
 	read(0x28, 8, m_totalSectors);
 
 	/* Read $MFT Logical Cluster Number */
-	read(0x30, 8, m_MftLcn);
+	uint64_t MftLcn = 0;
+	read(0x30, 8, (byte_t*)&MftLcn);
+	m_MftLcns.push_back(MftLcn);
 
 	/* Read clusters per file record segment */
 	read(0x40, 4, m_clustersPerRecord);
@@ -44,11 +48,11 @@ void NTFSManager::readMFT() {
 
 	/* Iterate over MFT entries */
 	int i = 0;
-	streamoff entryOffset = string2long(m_MftLcn, 8) * m_sectorsPerCluster * string2int(m_bytesPerSector,2);
+	streamoff entryOffset = m_MftLcns[0] * m_sectorsPerCluster * string2int(m_bytesPerSector,2);
 	streamoff fieldOffset = 0;
 	streamoff firstAttributeOff = 0;
 	uint32_t entrySize = 0;
-	uint32_t FILEsignature = 0;
+	uint32_t FILEsignature = 1;
 	uint32_t attrType = 0;
 	uint32_t attrLen = 0;
 
@@ -57,63 +61,77 @@ void NTFSManager::readMFT() {
 	/* Temporary bytes for reading */
 	byte_t bytes2[2];
 
+	/* For every $MFT cluster */
+	int VCN = 0;
+	for (uint32_t j = 0; j < m_MftLcns.size(); j++){
 
-	while(true){
+		VCN++;
+		entryOffset = m_MftLcns[j] * m_bytesPerCluster;
 
-		/* Read entry header */
-		read(entryOffset + fieldOffset, 4, (byte_t*)&FILEsignature);
+		/* While not end of MFT cluster or there are entries */
+		while(FILEsignature && ((entryOffset + fieldOffset)
+				< ((m_MftLcns[j] * m_bytesPerCluster) + m_bytesPerCluster))){
 
-		/* If no signature - no more files */
-		/* TODO: MFT on multiple clusters */
-		if (!FILEsignature){
-			return;
-		}
+			/* Read entry header */
+			read(entryOffset + fieldOffset, 4, (byte_t*)&FILEsignature);
 
-		/* Read first attribute offset */
-		fieldOffset = 0x14;
-		read(entryOffset + fieldOffset, 2, bytes2);
-		firstAttributeOff = string2int(bytes2, 2);
-
-		/* Read MFT entry size (allocated) */
-		fieldOffset = 0x1C;
-		read(entryOffset + fieldOffset, 4, (byte_t*)&entrySize);
-
-		/* Look for interesting attributes */
-		fieldOffset = firstAttributeOff;
-
-		while(true){
-
-			/* Get attribute type */
-			read(entryOffset + fieldOffset, 4, (byte_t*)&attrType);
-
-			/* End of record - 0xFFFFFFFF */
-			if (attrType == 0xFFFFFFFF){
+			/* If no signature - no more files in this cluster */
+			if (!FILEsignature){
 				break;
 			}
 
-			/* Get attribute length */
-			read(entryOffset + fieldOffset + 4, 4, (byte_t*)&attrLen);
+			/* Read first attribute offset */
+			fieldOffset = 0x14;
+			read(entryOffset + fieldOffset, 2, bytes2);
+			firstAttributeOff = string2int(bytes2, 2);
 
-			/* See if attribute is interesting - handle if necessary */
-			handleAttribute(attrType, entryOffset + fieldOffset, file);
+			/* Read MFT entry size (allocated) */
+			fieldOffset = 0x1C;
+			read(entryOffset + fieldOffset, 4, (byte_t*)&entrySize);
+
+			/* Look for interesting attributes */
+			fieldOffset = firstAttributeOff;
+
+			while(true){
+
+				/* Get attribute type */
+				read(entryOffset + fieldOffset, 4, (byte_t*)&attrType);
+
+				/* End of record - 0xFFFFFFFF, some files have bad 0xb0 attribute length
+				 * hence the 0x00 check */
+				if (attrType == 0xFFFFFFFF || attrType == 0x00000000){
+					break;
+				}
+
+				/* Get attribute length */
+				read(entryOffset + fieldOffset + 4, 4, (byte_t*)&attrLen);
 
 
-			fieldOffset += attrLen;
+				/* See if attribute is interesting - handle if necessary */
+				handleAttribute(attrType, entryOffset + fieldOffset, file);
+
+
+				fieldOffset += attrLen;
+			}
+
+			/* If file is not system file or empty file then copy it */
+			cout << std::dec << "\n[NTFS] $MFT's VCN: " << VCN << " Found file: \'"
+					<< file.name << "\'\tSize: " << std::dec << file.length << endl;
+
+			if (file.name[0] != '$' && file.name[0] != '\0' && file.length != 0){
+				m_fatManager->writeFile(file.data, file.name, file.extension, file.length);
+			}else{
+				cout << "\t[FAT32] Empty or system file, omitting..." << endl;
+			}
+
+			fieldOffset = 0;
+			entryOffset += entrySize;
+			i++;
+			file.data.clear();
+			file.length = 0;
+			strncpy((char*)file.name, "\0\0\0\0\0\0\0\0\0\0\0", 11);
+			strncpy((char*)file.extension, "\0\0\0", 3);
 		}
-
-		/* If file is not system file or empty file then copy it */
-		if (file.name[0] != '$' && file.name[0] != '\0' && file.length != 0){
-			m_fatManager->writeFile(file.data, file.name, file.extension, file.length);
-		}
-
-		fieldOffset = 0;
-		entryOffset += entrySize;
-		i++;
-		file.data.clear();
-		file.length = 0;
-		strncpy((char*)file.name, "\0\0\0\0\0\0\0\0\0\0\0", 11);
-		strncpy((char*)file.extension, "\0\0\0", 3);
-
 	}
 }
 
@@ -206,9 +224,6 @@ void NTFSManager::handleAttribute(uint32_t attrType, streamoff attrOffset, File 
 
 			}
 
-			cout << "\n[NTFS] Found file: \'" << file.name << "\'\tSize: " << std::dec << file.length << endl;
-
-
 			break;
 
 
@@ -265,22 +280,43 @@ void NTFSManager::handleAttribute(uint32_t attrType, streamoff attrOffset, File 
 					attrContentOff += bytesForLCN;
 					read(attrOffset + attrContentOff, 1, &header);
 
-					/* Read data from data runs */
-					Cluster tmp(m_sectorsPerCluster * string2int(m_bytesPerSector, 2));
-					for (uint32_t i = 0; i < string2long(clusterCount, bytesForClusterCount); i++){
-						// lcn to offset
-						// read from offset to data
-						// pushback cluster to file
-						// do data runs for mft :)
+					/* If it's MFT file, add it's LCNs to m_mftLcns */
+					if (!m_mftLcnsRead &&
+							file.name[0] == '$' &&
+							file.name[1] == 'M' &&
+							file.name[2] == 'F' &&
+							file.name[3] == 'T' &&
+							file.name[4] == 0 ){
+
+						for (uint32_t i = 0; i < string2long(clusterCount, bytesForClusterCount); i++){
+							uint64_t mftLcn = string2long(startingLCN, bytesForLCN) + i;
+							m_MftLcns.push_back(mftLcn);
+						}
+
+
+					}else{
+						/* Read data from each cluster of  data run */
+						Cluster tmp(m_sectorsPerCluster * string2int(m_bytesPerSector, 2));
+						for (uint32_t i = 0; i < string2long(clusterCount, bytesForClusterCount); i++){
+							read((string2long(startingLCN, bytesForLCN) + i) * string2int(m_bytesPerSector,2) * m_sectorsPerCluster
+									, string2int(m_bytesPerSector, 2) * m_sectorsPerCluster
+									, tmp.m_data);
+
+							file.data.push_back(tmp);
+						}
 					}
 
 					runsCount++;
 					clustersSum += string2long(clusterCount, bytesForClusterCount);
 				}
 
-				cout << "\t[NTFS] Data attribute is non-resident in " << clustersSum
-						<< " LCNs across " << runsCount << " data runs." << endl;
-
+				if (file.name[0] == '$' &&
+					file.name[1] == 'M' &&
+					file.name[2] == 'F' &&
+					file.name[3] == 'T' &&
+					file.name[4] == 0 ){
+					m_mftLcnsRead = true;
+				}
 
 			/* Handle resident attribute */
 			}else{

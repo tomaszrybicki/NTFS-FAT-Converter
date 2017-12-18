@@ -58,9 +58,12 @@ private:
 	byte_t m_bytesPerSector[2] = {};
 	byte_t m_sectorsPerCluster;
 	byte_t m_reservedSectors[2] = {};
-	byte_t m_MftLcn[8];
+	std::vector<uint64_t> m_MftLcns;
 	byte_t m_clustersPerRecord[4];
 	byte_t m_totalSectors[8];
+
+	uint64_t m_bytesPerCluster;
+	bool m_mftLcnsRead = false;
 
 	FATManager* m_fatManager;
 
