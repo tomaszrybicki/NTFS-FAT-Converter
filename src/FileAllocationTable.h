@@ -2,7 +2,7 @@
  * FileAllocationTable.h
  *
  *  Created on: Dec 15, 2017
- *      Author: root
+ *      Author: Tomasz Rybicki
  */
 
 #ifndef FILEALLOCATIONTABLE_H_

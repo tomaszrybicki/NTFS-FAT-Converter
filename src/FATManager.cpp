@@ -11,12 +11,11 @@
 FATManager::FATManager(string drive
 		, uint32_t bytesPerSector
 		, uint32_t sectorsPerCluster
-		, uint32_t reservedSectors
 		, uint64_t neededSectors)
 	: m_drive(drive)
 	, m_bytesPerSector(bytesPerSector)
 	, m_sectorsPerCluster(sectorsPerCluster)
-	, m_reservedSectors(reservedSectors)
+	, m_reservedSectors(32)
 	, m_fatSize((((neededSectors / sectorsPerCluster)*4) / bytesPerSector) - 1)
 	, m_fat1Offset(m_bytesPerSector * m_reservedSectors)
 	, m_fat2Offset(m_fat1Offset + m_fatSize * m_bytesPerSector)

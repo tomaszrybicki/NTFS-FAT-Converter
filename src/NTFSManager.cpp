@@ -2,17 +2,18 @@
  * NTFSManager.cpp
  *
  *  Created on: Dec 17, 2017
- *      Author: root
+ *      Author: Tomasz Rybicki
  */
 
 #include "NTFSManager.h"
 
 using namespace std;
 
-NTFSManager::NTFSManager(string part)
+NTFSManager::NTFSManager(string part, bool readDeleted)
 	: m_partition(part)
 	, m_sectorsPerCluster(0)
 	, m_fatManager(0)
+	, m_readDeleted(readDeleted)
 {
 
 }
@@ -55,6 +56,7 @@ void NTFSManager::readMFT() {
 	uint32_t FILEsignature = 1;
 	uint32_t attrType = 0;
 	uint32_t attrLen = 0;
+	bool deleted = false;
 
 	File file = {};
 
@@ -89,6 +91,15 @@ void NTFSManager::readMFT() {
 			fieldOffset = 0x1C;
 			read(entryOffset + fieldOffset, 4, (byte_t*)&entrySize);
 
+			/* See if file is deleted - bit in flags field*/
+			deleted = false;
+			fieldOffset = 0x16;
+			read(entryOffset + fieldOffset, 2, bytes2);
+			if (! (bytes2[0] & 0b00000001)){
+				deleted = true;
+			}
+
+
 			/* Look for interesting attributes */
 			fieldOffset = firstAttributeOff;
 
@@ -119,7 +130,12 @@ void NTFSManager::readMFT() {
 					<< file.name << "\'\tSize: " << std::dec << file.length << endl;
 
 			if (file.name[0] != '$' && file.name[0] != '\0' && file.length != 0){
-				m_fatManager->writeFile(file.data, file.name, file.extension, file.length);
+				if (deleted && !m_readDeleted){
+					cout << "\t[NTFS] File is flagged as deleted. Use --deleted flag for copying it..." << endl;
+				} else {
+					m_fatManager->writeFile(file.data, file.name, file.extension, file.length);
+				}
+
 			}else{
 				cout << "\t[FAT32] Empty or system file, omitting..." << endl;
 			}

@@ -2,7 +2,7 @@
  * NTFSManager.h
  *
  *  Created on: Dec 17, 2017
- *      Author: root
+ *      Author: Tomasz Rybicki
  */
 
 #ifndef NTFSMANAGER_H_
@@ -16,7 +16,7 @@
 
 class NTFSManager {
 public:
-	NTFSManager(std::string part);
+	NTFSManager(std::string part, bool readDeleted);
 	virtual ~NTFSManager();
 
 	/* Gets info about basic parameters such as sector size */
@@ -66,7 +66,7 @@ private:
 	bool m_mftLcnsRead = false;
 
 	FATManager* m_fatManager;
-
+	bool m_readDeleted;
 };
 
 #endif /* NTFSMANAGER_H_ */

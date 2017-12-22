@@ -22,7 +22,6 @@ public:
 	FATManager(string drive
 			, uint32_t bytesPerSector
 			, uint32_t sectorsPerCluster
-			, uint32_t reservedSectors
 			, uint64_t neededSectors);
 	virtual ~FATManager();
 
